@@ -833,6 +833,7 @@ module.exports = function(stream) {
     
     if(next.curly && next.lbracket) {
       curly = next
+      curly.matching.before("\nif (typeof this.initialize === 'function' && (arguments[0] || {}).class_no_init !== true) this.initialize.apply(this, arguments);");
     }
     else {
       x.next.matching.after("{;}")
@@ -842,7 +843,7 @@ module.exports = function(stream) {
 
     if(!curly.matching.next.semi) curly.matching.after(";")
     if(insert_extends)
-      curly.matching.next.after(" __extends(" + class_name + ", "+ super_class.text + ");")
+      curly.matching.next.after(" __extends(" + class_name + ", " + super_class.text + ");")
 
     curly.updateBlock()
     curly.class_name = class_name;
@@ -850,7 +851,7 @@ module.exports = function(stream) {
 
 
   })
-
+  
   if(insert) {
     var g = stream.block
     if(!g.global) throw "WTF!"
@@ -861,6 +862,23 @@ module.exports = function(stream) {
 }
 
 
+// Two goals: 1) can pass in function or object as parent, 2) if function, then static properties should be available to child
+//*
+function __extends(child, parent) {
+  var __hasProp;
+  if (typeof parent === "function") {
+    child.prototype = new parent({class_no_init: true});
+    child.prototype.constructor = child;
+    __hasProp = Object.prototype.hasOwnProperty;
+    for (var key in parent) { if (__hasProp.call(parent, key) && child[key] == null) child[key] = parent[key]; }
+  } else
+    child.prototype = parent;
+  
+  child.__super__ = parent;
+}
+
+//*/
+/*
 function __extends(child, parent) {
   var __hasProp = Object.prototype.hasOwnProperty;
   for (var key in parent) { if (__hasProp.call(parent, key)) child[key] = parent[key]; }
@@ -870,7 +888,7 @@ function __extends(child, parent) {
   child.__super__ = parent.prototype;
   return child;
 };
-
+//*/
 
 // end module: kaffeine/plugins/class.js
 });
@@ -990,7 +1008,7 @@ module.exports = function(stream) {
       }
 
       var expressionText = loopWord.next.next.collectText(closingBracket.prev)          
-      if(expressionText.match(/ /)) expressionText = "(" + expressionText +")"
+      if(expressionText.match(/ /)) expressionText = "(" + expressionText + ")"
       var iter, val
       var closure = this.findClosure()
       
@@ -1109,20 +1127,27 @@ module.exports = function(stream) {
       
       
       if(this.next.word) {
-        if(this.myText().match(/ $/) || !this.next.text.match(/^[0-9]+$/)) {
+        if(this.myText().match(/ $/) /*|| !this.next.text.match(/^[0-9]+$/)*/) {
           return
         }
 //        console.log("X", this.next.text)
 //        if() return // no whitepsace next to a word
       }
-      var word = "arguments"
       
-      if(!this.next.word)
-        word += "[0]"
-      else {
-        word += "[" + this.next.remove().collectText() + "]"
-      }
-      ret = this.next
+      var closure = this.findClosure();
+      
+      hash_args = "_hash_args";
+      //closure.after(hash_args + " = Array.prototype.slice.call(arguments, 0);")
+      closure.vars[hash_args] = "Array.prototype.slice.call(arguments, 0);"
+      var word = hash_args
+      
+      if (this.next.klass === "word") {
+        word += "['" + this.next.text + "']"
+        this.next.remove();
+        ret = this.next.next
+      } else
+         ret = this.next
+         
       this.replaceWith(word)
       return ret
     }
@@ -1696,7 +1721,7 @@ module.exports = function(stream) {
   stream.each(function() {
     Token.current_token = this
     
-    if(this.blockType != "function") return 
+    if(this.blockType != "function") return
 
     var class_name = this.class_name
     var super_class = this.super_class
@@ -1727,22 +1752,34 @@ module.exports = function(stream) {
       }
       
       if(this.class_name) {
-        _super.replaceWith(this.class_name + ".__super__.constructor")
+        _super.replaceWith(this.class_name + ".__super__")
       } else {
 
         var eq = curly.blockTypeNode.prevNW()
         if(!eq.assign) throw "don't know which method to call for super"
         var method = eq.prevNW()
         
-        var start = method.expressionStart()
-        var text = start.collectText(method)
-        var caller
-        if(text.match(".prototype.")) {
-          caller = text.split(".prototype.")[0]
-        } else {
-          caller = text + ".constructor" //replace(/\.$/,"")
-        }
-        _super.replaceWith(caller + ".__super__." + method.text )
+        var start = method.expressionStart();
+        var text = start.collectText(method);
+        var methodText = method.text;
+        
+        if (text === "this.constructor." + methodText) {
+          _super.replaceWith("this.__super__." + methodText)
+        } else if (text === "this." + methodText) {
+          _super.replaceWith("this.constructor.prototype." + methodText)
+        } else if (/^\w+\./.test(text)) {
+          chain = text.match(/(\w+\.)/g);
+          _super.replaceWith(chain.join('') + "__super__." + methodText)
+        } else // Don't know if this will ever hit...
+          _super.replaceWith("this.constructor.prototype." + methodText)
+          
+          /*
+          if(text.match(".prototype.")) {
+            caller = text.split(".prototype.")[0]
+          } else {
+            caller = text + ".constructor" //replace(/\.$/,"")
+          }
+          //*/
       }
     }
     else {

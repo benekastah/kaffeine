@@ -1,15 +1,95 @@
 #!/usr/bin/env node
-require("kaffeine")
-var path = require("path")
+var kaffeine = require("kaffeine");
+var path = require("path");
+var sys = require("sys");
 
-var x = process.ARGV.length - 1
+var x = Math.max(process.ARGV.length - 1, 2)
 var file = process.ARGV[x]
 
-if(!file)  {
-  console.log("missing source file?")
-  return 
-}
-var abs = path.join(process.cwd(), "./", file).replace(/.k$/, "")
+if(file)  {
+   var abs = path.join(process.cwd(), "./", file).replace(/.k$/, "")
 
-process.chdir(path.dirname(abs))
-require(abs)
+   process.chdir(path.dirname(abs))
+   require(abs)
+} else {
+   
+   sys.puts("Kaffeine interactive shell.\nPress Ctrl+C to quit.");
+   cli();
+   
+}
+
+function cli() {
+   var commands = [],
+   stdout = process.stdout,
+   stdin = process.stdin,
+   prefix = 'kaffeine> ',
+   command,
+   indx;
+   commandMaxLength;
+   
+   init();
+   
+   var tty = require('tty');
+   tty.setRawMode(true);
+   stdin.resume();
+   //stdin.setEncoding('utf8');
+   
+   stdout.write(prefix);
+   
+   /*
+   stdin.on('data', function(data) {
+      command = data.toString().trim();
+      commands.push(command);
+      
+      stdout.write('got: ' + command + "\n");
+      stdout.write('kaffeine> ');
+      stdin.resume();
+   });
+   //*/
+   
+   //*
+   stdin.on('keypress', function (keyChar, key) {
+      //*
+      var append = '';
+      var prepend = '';
+      var updateStdout = true;
+      if (key) {
+         if (key.name === 'up') {
+            var i = Math.max(indx - 1, 0);
+            if (commands[i] != null)
+               command = commands[i];
+            indx = i;
+         } else if (key.name === 'down') {
+            var i = Math.min(indx + 1, commands.length-1);
+            if (commands[i] != null)
+               command = commands[i];
+            indx = i;
+         } else if (key.ctrl && key.name === 'c') {
+            stdout.write('\n\n');
+            process.exit();
+         } else if (key.name === "backspace") {
+            command += '\b';
+         } else if (key.name === "enter") {
+            updateStdout = false;
+            commands.push(command);
+            
+            init();
+         } else {
+            if (keyChar)
+               command += keyChar;
+         }
+         
+         if (updateStdout)
+            stdout.write(prepend + '\r' + prefix + command + append);
+      }
+      //*/
+   });
+   //*/
+   
+   function init () {
+      stdout.write("\n"+prefix);
+      command = '';
+      indx = commands.length - 1;
+      commandMaxLength = 0;
+   }
+}
